@@ -11,7 +11,7 @@ permissions:
   contents: read
 
 env:
-  AWS_REGION: ap-southeast-1
+  AWS_REGION: us-east-1          # Change if needed
   ECR_REPOSITORY: santhosh
   ACCOUNT_ID: 352311919031
   IMAGE_TAG: latest
@@ -28,8 +28,8 @@ jobs:
     - name: Configure AWS Credentials (OIDC)
       uses: aws-actions/configure-aws-credentials@v3
       with:
-        role-to-assume: arn:aws:iam::352311919031:role/oidc
-        aws-region: ap-southeast-1
+        role-to-assume: arn:aws:iam::${{ env.ACCOUNT_ID }}:role/oidc
+        aws-region: ${{ env.AWS_REGION }}
 
     - name: Login to Amazon ECR
       run: |
@@ -56,11 +56,21 @@ jobs:
     - name: Deploy to EC2
       uses: appleboy/ssh-action@v0.1.7
       with:
-        host: ${{ secrets.EC2_HOST }}
-        username: ${{ secrets.EC2_USER }}
-        key: ${{ secrets.EC2_SSH_KEY }}
+        host: ${{ secrets.EC2_HOST }}         # EC2 public/private IP
+        username: ${{ secrets.EC2_USER }}     # usually ubuntu
+        key: ${{ secrets.EC2_SSH_KEY }}       # PEM key stored in GitHub Secrets
         script: |
+          # Install Docker & AWS CLI if not already installed
+          sudo apt update && sudo apt install -y docker.io awscli
+
+          # ECR login on EC2
+          aws ecr get-login-password --region $AWS_REGION | \
+          docker login --username AWS --password-stdin $ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com
+
+          # Stop & remove old container
           docker stop app || true
           docker rm app || true
-          docker pull 352311919031.dkr.ecr.us-east-1.amazonaws.com/santhosh:latest
-          docker run -d -p 80:3000 --name app 352311919031.dkr.ecr.us-east-1.amazonaws.com/santhosh:latest
+
+          # Pull new image and run container
+          docker pull $ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPOSITORY:$IMAGE_TAG
+          docker run -d -p 80:3000 --name app $ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPOSITORY:$IMAGE_TAG
