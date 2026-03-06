@@ -21,45 +21,45 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-
-    # 1️⃣ Checkout code
+    # Step 1: Checkout the code
     - name: Checkout Repository
       uses: actions/checkout@v3
 
-    # 2️⃣ Configure AWS credentials using OIDC
-    - name: Configure AWS Credentials (OIDC)
+    # Step 2: Configure AWS credentials using OIDC
+    - name: Configure AWS Credentials
       uses: aws-actions/configure-aws-credentials@v3
       with:
         role-to-assume: arn:aws:iam::352311919031:role/oidc
         aws-region: ${{ env.AWS_REGION }}
 
-    # 3️⃣ Login to ECR
+    # Step 3: Login to ECR
     - name: Login to Amazon ECR
       run: |
         aws ecr get-login-password --region $AWS_REGION | \
         docker login --username AWS --password-stdin $ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com
 
-    # 4️⃣ Create ECR repo if it doesn't exist
+    # Step 4: Create ECR repository if it does not exist
     - name: Create ECR Repository if Not Exists
       run: |
         aws ecr describe-repositories --repository-names $ECR_REPOSITORY --region $AWS_REGION || \
         aws ecr create-repository --repository-name $ECR_REPOSITORY --region $AWS_REGION
 
-    # 5️⃣ Build Docker image
+    # Step 5: Build Docker image
     - name: Build Docker Image
-      run: docker build -t $ECR_REPOSITORY .
+      run: |
+        docker build -t $ECR_REPOSITORY .
 
-    # 6️⃣ Tag Docker image
+    # Step 6: Tag Docker image for ECR
     - name: Tag Docker Image
       run: |
         docker tag $ECR_REPOSITORY:latest $ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPOSITORY:$IMAGE_TAG
 
-    # 7️⃣ Push Docker image to ECR
+    # Step 7: Push Docker image to ECR
     - name: Push Docker Image to ECR
       run: |
         docker push $ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPOSITORY:$IMAGE_TAG
 
-    # 8️⃣ Deploy to EC2
+    # Step 8: Deploy to EC2
     - name: Deploy to EC2
       uses: appleboy/ssh-action@v0.1.7
       with:
@@ -67,29 +67,22 @@ jobs:
         username: ${{ secrets.EC2_USER }}
         key: ${{ secrets.EC2_SSH_KEY }}
         script: |
-          # Install Docker if not installed
+          # Install Docker if missing
           if ! command -v docker &> /dev/null; then
             sudo apt-get update -y
-            sudo apt-get install -y docker.io unzip curl
+            sudo apt-get install -y docker.io
             sudo systemctl enable docker
             sudo systemctl start docker
-          fi
-
-          # Install AWS CLI v2 if not installed
-          if ! command -v aws &> /dev/null; then
-            curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
-            unzip awscliv2.zip
-            sudo ./aws/install
           fi
 
           # Login to ECR
           aws ecr get-login-password --region $AWS_REGION | \
           docker login --username AWS --password-stdin $ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com
 
-          # Stop & remove old container
+          # Stop & remove existing container
           docker stop app || true
           docker rm app || true
 
-          # Pull new image and run container
+          # Pull latest image and run container
           docker pull $ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPOSITORY:$IMAGE_TAG
           docker run -d -p 80:3000 --name app $ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPOSITORY:$IMAGE_TAG
