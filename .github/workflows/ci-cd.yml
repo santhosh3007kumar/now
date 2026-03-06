@@ -11,7 +11,7 @@ permissions:
   contents: read
 
 env:
-  AWS_REGION: us-east-1
+  AWS_REGION: ap-southeast-1
   ECR_REPOSITORY: santhosh
   ACCOUNT_ID: 352311919031
   IMAGE_TAG: latest
