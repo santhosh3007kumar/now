@@ -11,7 +11,7 @@ permissions:
   contents: read
 
 env:
-  AWS_REGION: us-east-1          # Change if needed
+  AWS_REGION: us-east-1
   ECR_REPOSITORY: santhosh
   ACCOUNT_ID: 352311919031
   IMAGE_TAG: latest
@@ -22,48 +22,67 @@ jobs:
 
     steps:
 
+    # 1️⃣ Checkout code
     - name: Checkout Repository
       uses: actions/checkout@v3
 
+    # 2️⃣ Configure AWS credentials using OIDC
     - name: Configure AWS Credentials (OIDC)
       uses: aws-actions/configure-aws-credentials@v3
       with:
-        role-to-assume: arn:aws:iam::${{ env.ACCOUNT_ID }}:role/oidc
+        role-to-assume: arn:aws:iam::352311919031:role/oidc
         aws-region: ${{ env.AWS_REGION }}
 
+    # 3️⃣ Login to ECR
     - name: Login to Amazon ECR
       run: |
         aws ecr get-login-password --region $AWS_REGION | \
         docker login --username AWS --password-stdin $ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com
 
+    # 4️⃣ Create ECR repo if it doesn't exist
     - name: Create ECR Repository if Not Exists
       run: |
         aws ecr describe-repositories --repository-names $ECR_REPOSITORY --region $AWS_REGION || \
         aws ecr create-repository --repository-name $ECR_REPOSITORY --region $AWS_REGION
 
+    # 5️⃣ Build Docker image
     - name: Build Docker Image
-      run: |
-        docker build -t $ECR_REPOSITORY .
+      run: docker build -t $ECR_REPOSITORY .
 
+    # 6️⃣ Tag Docker image
     - name: Tag Docker Image
       run: |
         docker tag $ECR_REPOSITORY:latest $ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPOSITORY:$IMAGE_TAG
 
+    # 7️⃣ Push Docker image to ECR
     - name: Push Docker Image to ECR
       run: |
         docker push $ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPOSITORY:$IMAGE_TAG
 
+    # 8️⃣ Deploy to EC2
     - name: Deploy to EC2
       uses: appleboy/ssh-action@v0.1.7
       with:
-        host: ${{ secrets.EC2_HOST }}         # EC2 public/private IP
-        username: ${{ secrets.EC2_USER }}     # usually ubuntu
-        key: ${{ secrets.EC2_SSH_KEY }}       # PEM key stored in GitHub Secrets
+        host: ${{ secrets.EC2_HOST }}
+        username: ${{ secrets.EC2_USER }}
+        key: ${{ secrets.EC2_SSH_KEY }}
         script: |
-          # Install Docker & AWS CLI if not already installed
-          sudo apt update && sudo apt install -y docker.io awscli
+          # Install Docker if not installed
+          if ! command -v docker &> /dev/null; then
+            sudo apt-get update -y
+            sudo apt-get install -y docker.io unzip curl
+            sudo systemctl enable docker
+            sudo systemctl start docker
+          fi
 
-          # ECR login on EC2
+          # Install AWS CLI v2 if not installed
+          if ! command -v aws &> /dev/null; then
+            curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+            unzip awscliv2.zip
+            sudo ./aws/install
+          fi
+
+          # Login to ECR
           aws ecr get-login-password --region $AWS_REGION | \
           docker login --username AWS --password-stdin $ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com
 
