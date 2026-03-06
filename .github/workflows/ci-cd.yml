@@ -21,68 +21,66 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    # Step 1: Checkout the code
-    - name: Checkout Repository
-      uses: actions/checkout@v3
+      # 1️⃣ Checkout the repo
+      - name: Checkout Repository
+        uses: actions/checkout@v3
 
-    # Step 2: Configure AWS credentials using OIDC
-    - name: Configure AWS Credentials
-      uses: aws-actions/configure-aws-credentials@v3
-      with:
-        role-to-assume: arn:aws:iam::352311919031:role/oidc
-        aws-region: ${{ env.AWS_REGION }}
+      # 2️⃣ Configure AWS credentials using OIDC
+      - name: Configure AWS Credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v3
+        with:
+          role-to-assume: arn:aws:iam::352311919031:role/oidc
+          aws-region: ${{ env.AWS_REGION }}
 
-    # Step 3: Login to ECR
-    - name: Login to Amazon ECR
-      run: |
-        aws ecr get-login-password --region $AWS_REGION | \
-        docker login --username AWS --password-stdin $ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com
-
-    # Step 4: Create ECR repository if it does not exist
-    - name: Create ECR Repository if Not Exists
-      run: |
-        aws ecr describe-repositories --repository-names $ECR_REPOSITORY --region $AWS_REGION || \
-        aws ecr create-repository --repository-name $ECR_REPOSITORY --region $AWS_REGION
-
-    # Step 5: Build Docker image
-    - name: Build Docker Image
-      run: |
-        docker build -t $ECR_REPOSITORY .
-
-    # Step 6: Tag Docker image for ECR
-    - name: Tag Docker Image
-      run: |
-        docker tag $ECR_REPOSITORY:latest $ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPOSITORY:$IMAGE_TAG
-
-    # Step 7: Push Docker image to ECR
-    - name: Push Docker Image to ECR
-      run: |
-        docker push $ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPOSITORY:$IMAGE_TAG
-
-    # Step 8: Deploy to EC2
-    - name: Deploy to EC2
-      uses: appleboy/ssh-action@v0.1.7
-      with:
-        host: ${{ secrets.EC2_HOST }}
-        username: ${{ secrets.EC2_USER }}
-        key: ${{ secrets.EC2_SSH_KEY }}
-        script: |
-          # Install Docker if missing
-          if ! command -v docker &> /dev/null; then
-            sudo apt-get update -y
-            sudo apt-get install -y docker.io
-            sudo systemctl enable docker
-            sudo systemctl start docker
-          fi
-
-          # Login to ECR
+      # 3️⃣ Login to Amazon ECR
+      - name: Login to Amazon ECR
+        run: |
           aws ecr get-login-password --region $AWS_REGION | \
           docker login --username AWS --password-stdin $ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com
 
-          # Stop & remove existing container
-          docker stop app || true
-          docker rm app || true
+      # 4️⃣ Create ECR repository if it does not exist
+      - name: Create ECR repository if missing
+        run: |
+          aws ecr describe-repositories --repository-names $ECR_REPOSITORY --region $AWS_REGION || \
+          aws ecr create-repository --repository-name $ECR_REPOSITORY --region $AWS_REGION
 
-          # Pull latest image and run container
-          docker pull $ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPOSITORY:$IMAGE_TAG
-          docker run -d -p 80:3000 --name app $ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPOSITORY:$IMAGE_TAG
+      # 5️⃣ Build Docker image
+      - name: Build Docker Image
+        run: docker build -t $ECR_REPOSITORY .
+
+      # 6️⃣ Tag Docker image for ECR
+      - name: Tag Docker Image
+        run: docker tag $ECR_REPOSITORY:latest $ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPOSITORY:$IMAGE_TAG
+
+      # 7️⃣ Push Docker image to ECR
+      - name: Push Docker Image
+        run: docker push $ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPOSITORY:$IMAGE_TAG
+
+      # 8️⃣ Deploy to EC2 via SSH
+      - name: Deploy to EC2
+        uses: appleboy/ssh-action@v0.1.7
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          port: 22
+          script: |
+            # Set environment variables
+            export AWS_REGION=ap-southeast-1
+            export ACCOUNT_ID=352311919031
+            export ECR_REPOSITORY=santhosh
+            export IMAGE_TAG=latest
+
+            # Stop and remove old container
+            docker stop app || true
+            docker rm app || true
+
+            # Login to ECR using EC2 IAM role
+            aws ecr get-login-password --region $AWS_REGION | \
+            docker login --username AWS --password-stdin $ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com
+
+            # Pull the latest image
+            docker pull $ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPOSITORY:$IMAGE_TAG
+
+            # Run the container
+            docker run -d -p 80:3000 --name app $ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPOSITORY:$IMAGE_TAG
