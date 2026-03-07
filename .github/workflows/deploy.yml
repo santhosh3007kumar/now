@@ -1,0 +1,489 @@
+name: FULL DevOps CI/CD Pipeline
+
+on:
+push:
+branches:
+- main
+
+permissions:
+id-token: write
+contents: read
+
+env:
+AWS_REGION: us-east-1
+AWS_ACCOUNT_ID: 123456789012
+ECR_REPOSITORY: myapp
+EKS_CLUSTER_NAME: devops-cluster
+
+jobs:
+
+deploy:
+runs-on: ubuntu-latest
+
+```
+steps:
+```
+
+# -----------------------------
+
+# Checkout Source Code
+
+# -----------------------------
+
+```
+- name: Checkout Code
+  uses: actions/checkout@v3
+```
+
+# -----------------------------
+
+# Configure AWS Access
+
+# -----------------------------
+
+```
+- name: Configure AWS Credentials
+  uses: aws-actions/configure-aws-credentials@v4
+  with:
+    role-to-assume: ${{ secrets.AWS_ROLE }}
+    aws-region: ${{ env.AWS_REGION }}
+```
+
+# -----------------------------
+
+# Install DevOps Tools
+
+# -----------------------------
+
+```
+- name: Install kubectl
+  uses: azure/setup-kubectl@v3
+
+- name: Install Helm
+  uses: azure/setup-helm@v3
+
+- name: Install eksctl
+  run: |
+    curl --silent --location \
+    "https://github.com/weaveworks/eksctl/releases/latest/download/eksctl_Linux_amd64.tar.gz" \
+    | tar xz -C /tmp
+    sudo mv /tmp/eksctl /usr/local/bin
+```
+
+# -----------------------------
+
+# Create ECR Repository
+
+# -----------------------------
+
+```
+- name: Create ECR Repository
+  run: |
+    aws ecr describe-repositories \
+    --repository-names $ECR_REPOSITORY \
+    --region $AWS_REGION || \
+    aws ecr create-repository \
+    --repository-name $ECR_REPOSITORY \
+    --region $AWS_REGION
+```
+
+# -----------------------------
+
+# Create EKS Cluster
+
+# -----------------------------
+
+```
+- name: Create EKS Cluster
+  run: |
+    eksctl get cluster --name $EKS_CLUSTER_NAME --region $AWS_REGION || \
+    eksctl create cluster \
+    --name $EKS_CLUSTER_NAME \
+    --region $AWS_REGION \
+    --nodegroup-name workers \
+    --node-type t3.medium \
+    --nodes 2 \
+    --nodes-min 2 \
+    --nodes-max 5 \
+    --managed
+```
+
+# -----------------------------
+
+# Configure kubectl
+
+# -----------------------------
+
+```
+- name: Update kubeconfig
+  run: |
+    aws eks update-kubeconfig \
+    --region $AWS_REGION \
+    --name $EKS_CLUSTER_NAME
+```
+
+# -----------------------------
+
+# Login to Amazon ECR
+
+# -----------------------------
+
+```
+- name: Login to ECR
+  run: |
+    aws ecr get-login-password --region $AWS_REGION | \
+    docker login \
+    --username AWS \
+    --password-stdin \
+    $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com
+```
+
+# -----------------------------
+
+# Build Docker Image
+
+# -----------------------------
+
+```
+- name: Set Image Tag
+  run: echo "IMAGE_TAG=${GITHUB_SHA::7}" >> $GITHUB_ENV
+
+- name: Build Docker Image
+  run: |
+    docker build -t $ECR_REPOSITORY:$IMAGE_TAG .
+```
+
+# -----------------------------
+
+# Trivy Security Scan
+
+# -----------------------------
+
+```
+- name: Trivy Scan
+  uses: aquasecurity/trivy-action@master
+  with:
+    image-ref: ${{ env.ECR_REPOSITORY }}:${{ env.IMAGE_TAG }}
+    format: table
+```
+
+# -----------------------------
+
+# Push Image to ECR
+
+# -----------------------------
+
+```
+- name: Tag Image
+  run: |
+    docker tag $ECR_REPOSITORY:$IMAGE_TAG \
+    $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPOSITORY:$IMAGE_TAG
+
+- name: Push Image
+  run: |
+    docker push \
+    $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPOSITORY:$IMAGE_TAG
+```
+
+# -----------------------------
+
+# Deploy to EKS with Helm
+
+# -----------------------------
+
+```
+- name: Deploy Application
+  run: |
+    helm upgrade --install myapp ./helm/myapp \
+    --set image.repository=$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPOSITORY \
+    --set image.tag=$IMAGE_TAG \
+    --set service.type=LoadBalancer
+```
+
+# -----------------------------
+
+# Enable Kubernetes Autoscaling
+
+# -----------------------------
+
+```
+- name: Enable Autoscaling
+  run: |
+    kubectl autoscale deployment myapp \
+    --cpu-percent=50 \
+    --min=2 \
+    --max=10
+```
+
+# -----------------------------
+
+# Install Monitoring
+
+# -----------------------------
+
+```
+- name: Install Prometheus + Grafana
+  run: |
+    helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+    helm repo update
+    helm upgrade --install monitoring prometheus-community/kube-prometheus-stack
+```
+
+# -----------------------------
+
+# Show Public Access
+
+# -----------------------------
+
+```
+- name: Show Services
+  run: kubectl get svc
+
+- name: Show Pods
+  run: kubectl get pods
+```
+name: FULL DevOps CI/CD Pipeline
+
+on:
+push:
+branches:
+- main
+
+permissions:
+id-token: write
+contents: read
+
+env:
+AWS_REGION: ap-southeast-1
+AWS_ACCOUNT_ID: 352311919031
+ECR_REPOSITORY: myapp
+EKS_CLUSTER_NAME: devops-cluster
+
+jobs:
+
+deploy:
+runs-on: ubuntu-latest
+
+```
+steps:
+```
+
+# -----------------------------
+
+# Checkout Source Code
+
+# -----------------------------
+
+```
+- name: Checkout Code
+  uses: actions/checkout@v3
+```
+
+# -----------------------------
+
+# Configure AWS Access
+
+# -----------------------------
+
+```
+- name: Configure AWS Credentials
+  uses: aws-actions/configure-aws-credentials@v4
+  with:
+    role-to-assume: ${{ secrets.AWS_ROLE }}
+    aws-region: ${{ env.AWS_REGION }}
+```
+
+# -----------------------------
+
+# Install DevOps Tools
+
+# -----------------------------
+
+```
+- name: Install kubectl
+  uses: azure/setup-kubectl@v3
+
+- name: Install Helm
+  uses: azure/setup-helm@v3
+
+- name: Install eksctl
+  run: |
+    curl --silent --location \
+    "https://github.com/weaveworks/eksctl/releases/latest/download/eksctl_Linux_amd64.tar.gz" \
+    | tar xz -C /tmp
+    sudo mv /tmp/eksctl /usr/local/bin
+```
+
+# -----------------------------
+
+# Create ECR Repository
+
+# -----------------------------
+
+```
+- name: Create ECR Repository
+  run: |
+    aws ecr describe-repositories \
+    --repository-names $ECR_REPOSITORY \
+    --region $AWS_REGION || \
+    aws ecr create-repository \
+    --repository-name $ECR_REPOSITORY \
+    --region $AWS_REGION
+```
+
+# -----------------------------
+
+# Create EKS Cluster
+
+# -----------------------------
+
+```
+- name: Create EKS Cluster
+  run: |
+    eksctl get cluster --name $EKS_CLUSTER_NAME --region $AWS_REGION || \
+    eksctl create cluster \
+    --name $EKS_CLUSTER_NAME \
+    --region $AWS_REGION \
+    --nodegroup-name workers \
+    --node-type t3.medium \
+    --nodes 2 \
+    --nodes-min 2 \
+    --nodes-max 5 \
+    --managed
+```
+
+# -----------------------------
+
+# Configure kubectl
+
+# -----------------------------
+
+```
+- name: Update kubeconfig
+  run: |
+    aws eks update-kubeconfig \
+    --region $AWS_REGION \
+    --name $EKS_CLUSTER_NAME
+```
+
+# -----------------------------
+
+# Login to Amazon ECR
+
+# -----------------------------
+
+```
+- name: Login to ECR
+  run: |
+    aws ecr get-login-password --region $AWS_REGION | \
+    docker login \
+    --username AWS \
+    --password-stdin \
+    $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com
+```
+
+# -----------------------------
+
+# Build Docker Image
+
+# -----------------------------
+
+```
+- name: Set Image Tag
+  run: echo "IMAGE_TAG=${GITHUB_SHA::7}" >> $GITHUB_ENV
+
+- name: Build Docker Image
+  run: |
+    docker build -t $ECR_REPOSITORY:$IMAGE_TAG .
+```
+
+# -----------------------------
+
+# Trivy Security Scan
+
+# -----------------------------
+
+```
+- name: Trivy Scan
+  uses: aquasecurity/trivy-action@master
+  with:
+    image-ref: ${{ env.ECR_REPOSITORY }}:${{ env.IMAGE_TAG }}
+    format: table
+```
+
+# -----------------------------
+
+# Push Image to ECR
+
+# -----------------------------
+
+```
+- name: Tag Image
+  run: |
+    docker tag $ECR_REPOSITORY:$IMAGE_TAG \
+    $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPOSITORY:$IMAGE_TAG
+
+- name: Push Image
+  run: |
+    docker push \
+    $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPOSITORY:$IMAGE_TAG
+```
+
+# -----------------------------
+
+# Deploy to EKS with Helm
+
+# -----------------------------
+
+```
+- name: Deploy Application
+  run: |
+    helm upgrade --install myapp ./helm/myapp \
+    --set image.repository=$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPOSITORY \
+    --set image.tag=$IMAGE_TAG \
+    --set service.type=LoadBalancer
+```
+
+# -----------------------------
+
+# Enable Kubernetes Autoscaling
+
+# -----------------------------
+
+```
+- name: Enable Autoscaling
+  run: |
+    kubectl autoscale deployment myapp \
+    --cpu-percent=50 \
+    --min=2 \
+    --max=10
+```
+
+# -----------------------------
+
+# Install Monitoring
+
+# -----------------------------
+
+```
+- name: Install Prometheus + Grafana
+  run: |
+    helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+    helm repo update
+    helm upgrade --install monitoring prometheus-community/kube-prometheus-stack
+```
+
+# -----------------------------
+
+# Show Public Access
+
+# -----------------------------
+
+```
+- name: Show Services
+  run: kubectl get svc
+
+- name: Show Pods
+  run: kubectl get pods
+```
+
